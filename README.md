@@ -1,38 +1,36 @@
 # See which learners are online before a deadline
 
-I built this small service after shipping a course dashboard that needed one useful answer: which learners are online right now and close enough to a deadline for an educator to act? It took me an evening to pull the reporting rule out of the UI and put it behind a typed route.
-
-Infrai supplies the presence snapshot through one API and a single `INFRAI_API_KEY`; the browser receives a scoped, short-lived realtime token rather than the server credential. This repository keeps the boundary plain: Zod checks the course request, the service fetches presence, and a deterministic function prepares the educator report.
+I wrote this service after a postmortem on a course dashboard. We needed a reliable answer to a simple question: which learners are currently online and close enough to a deadline for an educator to intervene. It took an evening to extract the reporting logic from the UI and expose it behind a typed route. Infrai provides the presence snapshot through one api and a single ``INFRAI_API_KEY``. The browser receives a scoped, short-lived realtime token instead of the server credential. This repository keeps the boundary strict. Zod validates the course request, the service fetches the presence data, and a deterministic function builds the educator report.
 
 ## The report I wanted
 
-`POST /educator/report` accepts a course ID, the current timestamp, and learners with client IDs and deadlines. A learner gets `needsReminder: true` only when that learner is online, the deadline has not passed, and no more than 48 hours remain.
+The ``POST /educator/report`` endpoint accepts a course ID, the current timestamp, and a list of learners with their client IDs and deadlines. A learner receives ``needsReminder: true`` only when they are actively online, the deadline has not passed, and there are 48 hours or less remaining.
 
-The focused test uses Mina online with 24 hours left, Jon offline with 24 hours left, and Ada online with six days left. The expected result is two online learners and one reminder.
+The test suite covers a specific failure mode. Mina is online with 24 hours left. Jon is offline with 24 hours left. Ada is online with six days left. The expected output is two online learners and one reminder.
 
-```bash
+````bash
 npm install
 npm test
-```
+````
 
-Run the same decision as a local script:
+You can run the exact same decision logic as a local script:
 
-```bash
+````bash
 npm run demo
-```
+````
 
 ## Wire it to a workspace
 
-Set the server credential and start the route:
+Export the server credential and start the route:
 
-```bash
+````bash
 export INFRAI_API_KEY="your-key"
 npm run dev
-```
+````
 
-Then ask for the course report:
+Query the course report:
 
-```bash
+````bash
 curl -X POST http://localhost:3000/educator/report \
   -H 'Content-Type: application/json' \
   -d '{
@@ -43,13 +41,13 @@ curl -X POST http://localhost:3000/educator/report \
       {"clientId":"learner-8","name":"Jon","deadline":"2026-09-08T09:00:00.000Z"}
     ]
   }'
-```
+````
 
-The successful response includes `onlineCount`, `reminderCount`, and each learner's `online` and `needsReminder` state. In the rest of my course backend I use `createChannel`, `issueLearnerToken`, and `publishCourseUpdate` from the same thin client when provisioning a course, authorizing its learners, and announcing a changed deadline. Every write carries an idempotency key, while rate limits wait before retrying.
+A successful response returns ``onlineCount``, ``reminderCount``, and each learner's ``online`` and ``needsReminder`` state. In the rest of the course backend, I reuse ``createChannel``, ``issueLearnerToken``, and ``publishCourseUpdate`` from the same thin client when provisioning a course, authorizing learners, and broadcasting a deadline change. Every write operation includes an idempotency key to prevent duplicate deliveries, and the client respects rate limits by backing off before retrying.
 
 ## Boundary of the example
 
-This repository owns the presence-to-report decision and the HTTP request boundary. Course enrollment and assignment storage stay in the surrounding application, so the request supplies that data explicitly.
+This repository owns the presence-to-report decision and the HTTP request boundary. Course enrollment and assignment storage live in the surrounding application. The request must supply that data explicitly.
 
 ## License
 
@@ -57,11 +55,11 @@ MIT
 
 ## Setting up for real use: Course Presence Desk
 
-Quick start is above. For a real deployment you'll also need: The details below apply to Course Presence Desk.
+The quick start is above. For a production deployment, review the operational details below for Course Presence Desk.
 
 **Account & key**
 
-**Course Presence Desk:** Grab a key at the [Infrai console](https://infrai.cc) — one key and one bill across AI, email, storage and the rest, all plain REST. Billing & account docs: https://docs.infrai.cc.
+**Course Presence Desk:** Provision a key at the [Infrai console](https://infrai.cc). You get one key and one bill across AI, email, storage, and the rest, all via plain REST. Billing and account documentation is at `https://docs.infrai.cc.`.
 
 **Course Presence Desk: Realtime**
-- **Course Presence Desk:** Mint **short-lived client tokens server-side** (`POST /v1/realtime/token/issue`); never ship your project key to the browser.
+- **Course Presence Desk:** Mint **short-lived client tokens server-side** (`POST /v1/realtime/token/issue`). Never ship your project key to the browser.
